@@ -2,19 +2,6 @@
 
 Steuerung des Schiffs über REST Schnittstellen der Bordkomponenten.
 
-
-## Aufbau
-
-```
-src/
-  components/components.py   IP und Basis URLs der Bordkomponenten
-  helpers/
-    cargo_hold.py            get_hold()
-    communication.py         stations_in_reach(), buy(), sell()
-    easy_steering.py         set_target(), wait_until_at_station(), goto()
-  aufgabe1.py                Aufgabe 1
-```
-
 ## Setup
 
 **Einmalig:**
