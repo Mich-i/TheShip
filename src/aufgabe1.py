@@ -1,14 +1,19 @@
 from helpers.communication import buy, sell
-from helpers.easy_steering import setTarget, waitUntilAtStation
-from helpers.cargo_hold import getInventory
+from helpers.easySteering import setTarget, waitUntilAtStation
+from helpers.cargoHold import getInventory
 
 TARGETAMOUNT = 12
+
+AZURA = "Azura Station"
+CORE = "Core Station"
+VESTA = "Vesta Station"
+VESTA_COORDINATES = {"x": 7000, "y": 7000}
 
 boughtTargetAmount = False
 
 while not boughtTargetAmount:
-    setTarget("Azura Station")
-    azuraStation = waitUntilAtStation("Azura Station")
+    setTarget(AZURA)
+    azuraStation = waitUntilAtStation(AZURA)
 
     ironPrice = azuraStation["resources"]["IRON"]["buy_price"]
     inventory = getInventory()
@@ -17,20 +22,20 @@ while not boughtTargetAmount:
     amountToBuy = min(affordableAmount, inventory["hold"]["hold_free"])
 
     if amountToBuy > 0:
-        buy("Azura Station", "IRON", amountToBuy)
+        buy(AZURA, "IRON", amountToBuy)
 
     if amountToBuy >= TARGETAMOUNT:
         boughtTargetAmount = True
     else:
-        setTarget("Core Station")
-        waitUntilAtStation("Core Station")
+        setTarget(CORE)
+        waitUntilAtStation(CORE)
 
         inventory = getInventory()
         ironAmount = inventory["hold"]["resources"]["IRON"]
         if ironAmount > 0:
-            sell("Core Station", "IRON", ironAmount)
+            sell(CORE, "IRON", ironAmount)
 
-setTarget({"x": 7000, "y": 7000})
-waitUntilAtStation("Vesta Station")
+setTarget(VESTA_COORDINATES)
+waitUntilAtStation(VESTA)
 
 print("Mission completed")
