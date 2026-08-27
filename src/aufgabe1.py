@@ -1,40 +1,41 @@
-"""Aufgabe 1: vollbeladen mit Eisen bei Vesta Station (7000/7000) andocken.
+# Ziel: Das Schiff vollbeladen mit Eisen bei Vesta Station (7000/7000) andocken.
+# Azura Station (-1000/1000) verkauft Eisen guenstig, Core Station (0/0) kauft es teurer.
 
-Azura Station (-1000/1000) verkauft Eisen guenstig, Core Station (0/0) kauft
-es teurer. Also so lange pendeln, bis der Laderaum voll ist.
-"""
-
-from helpers.cargo_hold import get_hold
 from helpers.communication import buy, sell
-from helpers.easy_steering import goto
+from helpers.easy_steering import set_target, wait_until_at_station
+from helpers.cargo_hold import get_inventory
 
-VESTA_STATION = {"x": 7000, "y": 7000}
+TARGET_AMOUNT = 12
 
-azura = goto("Azura Station", "Azura Station")
-hold = get_hold()
+# Money making loop
+bought_target_amount = False
 
-while hold["hold_free"] > 0:
-    iron_price = azura["resources"]["IRON"]["buy_price"]
-    amount_to_buy = min(hold["credits"] // iron_price, hold["hold_free"])
+while not bought_target_amount:
+    set_target("Azura Station")
+    azura_station = wait_until_at_station("Azura Station")
 
-    if amount_to_buy == 0:
-        break
+    iron_price = azura_station["resources"]["IRON"]["buy_price"]
+    inventory = get_inventory()
 
-    buy("Azura Station", "IRON", amount_to_buy)
-    hold = get_hold()
-    print(f"Gekauft: {amount_to_buy} IRON, noch frei: {hold['hold_free']}")
+    affordable_amount = inventory["hold"]["credits"] // iron_price
+    amount_to_buy = min(affordable_amount, inventory["hold"]["hold_free"])
 
-    if hold["hold_free"] == 0:
-        break
+    if amount_to_buy > 0:
+        buy("Azura Station", "IRON", amount_to_buy)
 
-    goto("Core Station", "Core Station")
-    sell("Core Station", "IRON", hold["resources"]["IRON"])
-    hold = get_hold()
-    print(f"Verkauft, Credits: {hold['credits']}")
+    if amount_to_buy >= TARGET_AMOUNT:
+        bought_target_amount = True
+    else:
+        set_target("Core Station")
+        wait_until_at_station("Core Station")
 
-    azura = goto("Azura Station", "Azura Station")
+        inventory = get_inventory()
+        iron_amount = inventory["hold"]["resources"]["IRON"]
+        if iron_amount > 0:
+            sell("Core Station", "IRON", iron_amount)
 
 # Vesta Station hat keinen Button im Easy-Steering-Widget -> Koordinaten noetig
-goto(VESTA_STATION, "Vesta Station")
+set_target({"x": 7000, "y": 7000})
+wait_until_at_station("Vesta Station")
 
-print("Angekommen bei Vesta Station:", get_hold())
+print("Arrived at Vesta Station")
