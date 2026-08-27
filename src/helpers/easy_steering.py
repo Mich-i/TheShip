@@ -1,15 +1,12 @@
 import requests
 import time
-
 from components.components import modules
 
-
-def set_target(target):
+def setTarget(target):
     url = f"{modules['easy-steering']}/set_target"
     requests.post(url, json={"target": target})
 
-
-def wait_until_at_station(station_name):
+def waitUntilAtStation(station_name):
     while True:
         url = f"{modules['communication']}/stations_in_reach"
         response = requests.get(url)
