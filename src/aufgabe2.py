@@ -1,6 +1,5 @@
 import sys
 import time
-
 from components.components import partner, stations
 from helpers.easySteering import setTarget, waitUntilAtStation
 from helpers.relay import sendToPeer, startServer
@@ -8,7 +7,6 @@ from helpers.stationChat import connect
 
 DURATION = 30
 SEED = [1, 2, 3, 4]
-
 
 def main(key):
     station = stations[key]
@@ -34,7 +32,6 @@ def main(key):
         time.sleep(5)
 
     print("Mission completed")
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2 or sys.argv[1] not in stations:

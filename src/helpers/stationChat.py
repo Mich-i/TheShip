@@ -1,9 +1,7 @@
 import json
 import threading
 import time
-
 import websocket
-
 
 def connect(station, onPayload):
     field = station["field"]
