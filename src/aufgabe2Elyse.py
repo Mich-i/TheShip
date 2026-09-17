@@ -1,33 +1,28 @@
 import time
-from components.components import IP
+from components.components import ELYSE, MISSION_DURATION_SECONDS, MISSION_STEP_SECONDS, START_SEED
 from helpers.easySteering import setTarget, waitUntilAtStation
 from helpers.relay import sendToPeer, startServer
-from helpers.stationChat import connect
+from helpers.stationChat import connectToStation
 
-NAME = "Elyse Terminal"
-WS = f"ws://{IP}:2026/api"
-FIELD = "msg"
-COORDINATES = {"x": -70565, "y": 72811}
-PEER = "192.168.100.51"
-PARTNER = "Shangris Station"
-
-DURATION = 30
-SEED = [1, 2, 3, 4]
-
-print(f"Fliege zu {NAME}")
-setTarget(COORDINATES)
-waitUntilAtStation(NAME)
+print(f"Fliege zu {ELYSE['name']}")
+setTarget(ELYSE["coordinates"])
+waitUntilAtStation(ELYSE["name"])
 setTarget("stop")
 print("Angekommen, halte Position")
 
-sendToStation = connect(NAME, WS, FIELD, lambda payload: sendToPeer(PEER, NAME, payload))
+sendToStation = connectToStation(
+    ELYSE["name"],
+    ELYSE["ws_url"],
+    ELYSE["field"],
+    lambda payload: sendToPeer(ELYSE["peer"], ELYSE["name"], payload),
+)
 
 startServer(lambda message: sendToStation(message["payload"], message["from"]))
 
-sendToStation(SEED, PARTNER)
+sendToStation(START_SEED, ELYSE["partner"])
 
-for remaining in range(DURATION, 0, -5):
+for remaining in range(MISSION_DURATION_SECONDS, 0, -MISSION_STEP_SECONDS):
     print(f"connected: {remaining}s")
-    time.sleep(5)
+    time.sleep(MISSION_STEP_SECONDS)
 
 print("Mission completed")

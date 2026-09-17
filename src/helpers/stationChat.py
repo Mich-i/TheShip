@@ -2,8 +2,9 @@ import json
 import threading
 import time
 import websocket
+from components.components import RECONNECT_DELAY_SECONDS
 
-def connect(name, wsUrl, field, onPayload):
+def connectToStation(name, wsUrl, field, onPayload):
     state = {"ws": None}
     ready = threading.Event()
 
@@ -42,12 +43,12 @@ def connect(name, wsUrl, field, onPayload):
                 on_close=onClose,
             )
             app.run_forever()
-            time.sleep(2)
+            time.sleep(RECONNECT_DELAY_SECONDS)
 
     threading.Thread(target=loop, daemon=True).start()
     ready.wait(timeout=15)
 
-    def send(payload, source):
+    def sendToStation(payload, source):
         ws = state["ws"]
         if ws is None:
             print(f"[{name}] not connected, message discarded")
@@ -55,4 +56,4 @@ def connect(name, wsUrl, field, onPayload):
         ws.send(json.dumps({"source": source, field: payload}))
         print(f"[{name}] --> {payload}")
 
-    return send
+    return sendToStation

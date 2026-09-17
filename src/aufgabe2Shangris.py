@@ -1,33 +1,28 @@
 import time
-from components.components import IP
+from components.components import MISSION_DURATION_SECONDS, MISSION_STEP_SECONDS, SHANGRIS, START_SEED
 from helpers.easySteering import setTarget, waitUntilAtStation
 from helpers.relay import sendToPeer, startServer
-from helpers.stationChat import connect
+from helpers.stationChat import connectToStation
 
-NAME = "Shangris Station"
-WS = f"ws://{IP}:2025/ws"
-FIELD = "data"
-COORDINATES = {"x": 4446, "y": 4340}
-PEER = "192.168.100.50"
-PARTNER = "Elyse Terminal"
-
-DURATION = 30
-SEED = [1, 2, 3, 4]
-
-print(f"Fliege zu {NAME}")
-setTarget(COORDINATES)
-waitUntilAtStation(NAME)
+print(f"Fliege zu {SHANGRIS['name']}")
+setTarget(SHANGRIS["coordinates"])
+waitUntilAtStation(SHANGRIS["name"])
 setTarget("stop")
 print("Angekommen, halte Position")
 
-sendToStation = connect(NAME, WS, FIELD, lambda payload: sendToPeer(PEER, NAME, payload))
+sendToStation = connectToStation(
+    SHANGRIS["name"],
+    SHANGRIS["ws_url"],
+    SHANGRIS["field"],
+    lambda payload: sendToPeer(SHANGRIS["peer"], SHANGRIS["name"], payload),
+)
 
 startServer(lambda message: sendToStation(message["payload"], message["from"]))
 
-sendToStation(SEED, PARTNER)
+sendToStation(START_SEED, SHANGRIS["partner"])
 
-for remaining in range(DURATION, 0, -5):
+for remaining in range(MISSION_DURATION_SECONDS, 0, -MISSION_STEP_SECONDS):
     print(f"connected: {remaining}s")
-    time.sleep(5)
+    time.sleep(MISSION_STEP_SECONDS)
 
 print("Mission completed")
