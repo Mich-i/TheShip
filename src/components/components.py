@@ -25,12 +25,3 @@ stations = {
 }
 
 partner = {"elyse": "shangris", "shangris": "elyse"}
-
-COMM_ELYSE_WS = "ws://192.168.100.50:2026/api"
-COMM_SHANGRIS_WS = "ws://192.168.100.51:2024/ws"
-
-modules = {
-    "easy-steering": f"http://{IP}:2009",
-    "communication": f"http://{IP}:2011",
-    "cargo-hold": f"http://{IP}:2012",
-}

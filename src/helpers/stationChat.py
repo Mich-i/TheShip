@@ -3,40 +3,39 @@ import threading
 import time
 import websocket
 
-def connect(station, onPayload):
-    field = station["field"]
+def connect(name, wsUrl, field, onPayload):
     state = {"ws": None}
     ready = threading.Event()
 
     def onOpen(ws):
         state["ws"] = ws
         ready.set()
-        print(f"[{station['name']}] connected")
+        print(f"[{name}] connected")
 
     def onMessage(ws, message):
         try:
             payload = json.loads(message).get(field)
         except json.JSONDecodeError:
-            print(f"[{station['name']}] not JSON: {message!r}")
+            print(f"[{name}] not JSON: {message!r}")
             return
         if payload is None:
-            print(f"[{station['name']}] without '{field}': {message!r}")
+            print(f"[{name}] without '{field}': {message!r}")
             return
-        print(f"[{station['name']}] <- {payload}")
+        print(f"[{name}] <- {payload}")
         onPayload(payload)
 
     def onError(ws, error):
-        print(f"[{station['name']}] {type(error).__name__}: {error}")
+        print(f"[{name}] {type(error).__name__}: {error}")
 
     def onClose(ws, code, message):
         state["ws"] = None
         ready.clear()
-        print(f"[{station['name']}] getrennt ({code})")
+        print(f"[{name}] getrennt ({code})")
 
     def loop():
         while True:
             app = websocket.WebSocketApp(
-                station["ws"],
+                wsUrl,
                 on_open=onOpen,
                 on_message=onMessage,
                 on_error=onError,
@@ -51,9 +50,9 @@ def connect(station, onPayload):
     def send(payload, source):
         ws = state["ws"]
         if ws is None:
-            print(f"[{station['name']}] not connected, message discarded")
+            print(f"[{name}] not connected, message discarded")
             return
         ws.send(json.dumps({"source": source, field: payload}))
-        print(f"[{station['name']}] --> {payload}")
+        print(f"[{name}] --> {payload}")
 
     return send
