@@ -1,15 +1,18 @@
-IP = "127.0.0.1"
+IP = "192.168.100.50"
 RELAY_PORT = 5000
 HTTP_TIMEOUT_SECONDS = 2
 RECONNECT_DELAY_SECONDS = 2
 MISSION_DURATION_SECONDS = 30
 MISSION_STEP_SECONDS = 5
 START_SEED = [1, 2, 3, 4]
+MONGO_CONNECTION_STRING = f"mongodb://theship:theship1234@{IP}:2021/theshipdb"
 
 modules = {
     "easy-steering": f"http://{IP}:2009",
     "communication": f"http://{IP}:2011",
     "cargo-hold": f"http://{IP}:2012",
+    "energy-management": [f"http://{IP}:2032", f"http://{IP}:2033"],
+    "sensor-void-energy": f"http://{IP}:2037",
 }
 
 ELYSE = {
@@ -38,4 +41,9 @@ STATIONS = {
 PARTNER = {
     "elyse": "shangris",
     "shangris": "elyse",
+}
+
+RELIEF = {
+    "name": "Relief Station",
+    "coordinates": {"x": 150000, "y": 150000},
 }
