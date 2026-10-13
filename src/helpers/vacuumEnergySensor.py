@@ -1,17 +1,38 @@
 import time
-import uuid
 import requests
 from components.components import modules
 
+SENSOR_URL = modules["sensor-void-energy"]
+MEASUREMENT_ID = "shield-generator-input"
+POLL_INTERVAL_SECONDS = 0.2
+MEASUREMENT_TIMEOUT_SECONDS = 10
+
+
+def discardMeasurement():
+    requests.delete(f"{SENSOR_URL}/measurements/{MEASUREMENT_ID}", timeout=5)
+
+
 def measureVacuumEnergy():
-    url = f"{modules['sensor-void-energy']}"
-    requestId = uuid.uuid4().hex
-    requests.post(f"{url}/trigger_measurement", json={"request_id": requestId})
+    discardMeasurement()
 
-    measurement = {"state": "measuring"}
-    while measurement["state"] != "measured":
-        time.sleep(0.2)
-        measurement = requests.get(f"{url}/measurements/{requestId}").json()
+    requests.post(
+        f"{SENSOR_URL}/trigger_measurement",
+        json={"request_id": MEASUREMENT_ID},
+        timeout=5,
+    ).raise_for_status()
 
-    requests.delete(f"{url}/measurements/{requestId}")
-    return measurement["result"]
+    deadline = time.monotonic() + MEASUREMENT_TIMEOUT_SECONDS
+    try:
+        while time.monotonic() < deadline:
+            measurement = requests.get(
+                f"{SENSOR_URL}/measurements/{MEASUREMENT_ID}", timeout=5
+            ).json()
+            if measurement.get("state") == "measured":
+                return measurement["result"]
+            time.sleep(POLL_INTERVAL_SECONDS)
+
+        raise TimeoutError(
+            f"Sensor returned no result within {MEASUREMENT_TIMEOUT_SECONDS}s"
+        )
+    finally:
+        discardMeasurement()

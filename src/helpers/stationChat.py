@@ -31,7 +31,7 @@ def connectToStation(name, wsUrl, field, onPayload):
     def onClose(ws, code, message):
         state["ws"] = None
         ready.clear()
-        print(f"[{name}] getrennt ({code})")
+        print(f"[{name}] disconnected ({code})")
 
     def loop():
         while True:

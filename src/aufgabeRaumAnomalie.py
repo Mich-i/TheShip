@@ -9,9 +9,9 @@ enableShieldComponents()
 storeVacuumEnergy(measureVacuumEnergy())
 
 setTarget(RELIEF["coordinates"])
-print(f"Kurs auf {RELIEF['name']} gesetzt")
+print(f"Setted course on {RELIEF['name']}")
 
 while RELIEF["name"] not in stationsInReach():
     storeVacuumEnergy(measureVacuumEnergy())
 
-print(f"{RELIEF['name']} erreicht")
+print(f"{RELIEF['name']} reached")

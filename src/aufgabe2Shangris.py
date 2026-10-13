@@ -4,11 +4,11 @@ from helpers.easySteering import setTarget, waitUntilAtStation
 from helpers.relay import sendToPeer, startServer
 from helpers.stationChat import connectToStation
 
-print(f"Fliege zu {SHANGRIS['name']}")
+print(f"Flying to {SHANGRIS['name']}")
 setTarget(SHANGRIS["coordinates"])
 waitUntilAtStation(SHANGRIS["name"])
 setTarget("stop")
-print("Angekommen, halte Position")
+print("Arrived, holding position")
 
 sendToStation = connectToStation(
     SHANGRIS["name"],

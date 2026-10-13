@@ -14,7 +14,7 @@ def startServer(onMessage):
             try:
                 onMessage(json.loads(body))
             except json.JSONDecodeError:
-                print(f"[relay] kein JSON: {body!r}")
+                print(f"[relay] not JSON: {body!r}")
 
         def log_message(self, *args):
             pass
