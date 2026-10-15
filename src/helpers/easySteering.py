@@ -1,15 +1,15 @@
 import requests
 import time
-from components.components import modules
+from components.components import REQUEST_TIMEOUT_SECONDS, modules
 
 def setTarget(target):
     url = f"{modules['easy-steering']}/set_target"
-    requests.post(url, json={"target": target})
+    requests.post(url, json={"target": target}, timeout=REQUEST_TIMEOUT_SECONDS)
 
 def waitUntilAtStation(station_name):
     while True:
         url = f"{modules['communication']}/stations_in_reach"
-        response = requests.get(url)
+        response = requests.get(url, timeout=REQUEST_TIMEOUT_SECONDS)
         stations = response.json()["stations"]
 
         if station_name in stations:
