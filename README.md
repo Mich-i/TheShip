@@ -55,6 +55,11 @@ Die eigentliche Hürde ist das unterschiedliche JSON-Feld:
 
 Der Relay selbst kennt nur `from` und `payload` und darf den Inhalt nicht verändern.
 
+## Aufgabe Scanner
+
+Der Scanner braucht einen RabbitMQ-Broker auf Port 2014 der eigenen VM. Setup und Check:
+[docs/rabbitmq-setup.md](docs/rabbitmq-setup.md).
+
 ## VM-Setup und Start
 
 Auf der VM:
