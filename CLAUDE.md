@@ -24,8 +24,8 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
   `ThreadingHTTPServer`) an die Partner-VM weiter.
 - **Aufgabe 3 (Anomalie)** – funktional gelöst, **muss noch refactored werden**.
   <!-- TODO: hier kurz ergänzen: Ziel der Mission, beteiligte Komponenten/Ports, Dateiname(n) -->
-- **Aufgabe Scanner (Mission 09)** – Skript `aufgabeScanner.py` fertig und auf .50 getestet.
-  Offen: Broker auf .51 und gemeinsamer Lauf beider Schiffe. Details im Abschnitt "Aufgabe Scanner".
+- **Aufgabe Scanner (Mission 09)** – gelöst (beide Schiffe gemeinsam), Code danach vereinfacht.
+  Skript `aufgabeScanner.py`. Details im Abschnitt "Aufgabe Scanner", Startanleitung im README.
 
 ## Bordkomponenten (Ports)
 
@@ -105,7 +105,7 @@ bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw St
 
 - **Broker:** RabbitMQ im k3s der eigenen VM, Namespace `rabbitmq` (nicht `theship-vendor`, den
   verwaltet der Installer), Image `rabbitmq:4`, Service `NodePort 2014 → 5672`, kein Volume.
-  Manifest `k8s/rabbitmq.yaml`, Anleitung `docs/rabbitmq-setup.md`. Stand: läuft auf .50.
+  Manifest `k8s/rabbitmq.yaml`, Anleitung `docs/rabbitmq-setup.md`.
 - **Scanner-Pod** (`theship-vendor/scanner`) verbindet sich mit `K8S_HOST:2014` (= eigene
   VM-IP), Login pika-Standard guest/guest, und versucht es alle 2 s neu. Startet der Broker
   später, ist kein Reinstall nötig.
@@ -121,14 +121,19 @@ bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw St
 - **"In der Nähe"** = `stations_in_reach` ≈ 240–250 Einheiten. `curr` zählt +1/s und fällt beim
   Verlassen **sofort auf 0**. `done` gilt nur, solange man drin bleibt. Die Mission ist erst
   fertig (`is_finished` im Chat), wenn beide gleichzeitig done sind → beide Skripte parallel starten.
+  Nach dem Abschluss **verschwindet der Chat** aus `/content`; das Skript endet bei `is_finished`
+  oder fehlendem Chat. Die Mission lässt sich nicht erneut öffnen.
 - **Steuerung:** Ziel direkt auf die Station hängt hinterher, weil Easy Steering vor dem Ziel
   abbremst. Lösung: Ziel = Position + Geschwindigkeit · `LEAD_SECONDS` (3 s). Testlauf: Distanz
   Mittel 65, Median 44, max 230, nie aus der Reichweite gefallen.
 - `/pos` `velocity` ist etwa Einheiten pro Tick (× ~25 ≈ Einheiten/s), wird nicht gebraucht.
 - WhatsUpp: `GET :2040/content` → `contacts["09 - Scanner"].chats[0]` mit `messages`
-  (`kind` `simple`/`progress`), `is_finished`, `choices`. Helper `helpers/whatsupp.py`.
-- Start und Varianten: `docs/aufgabe-scanner.md`.
+  (`kind` `simple`/`progress`), `is_finished`, `choices`. Helper `helpers/whatsupp.py`:
+  `getMissionChat(contactName)` (oder `None`) und `getProgress(chat, playerName)`.
 - Helper `src/helpers/scanner.py`: `startScanner(host)` startet einen Daemon-Thread (die
-  pika-Verbindung lebt nur dort, pika ist nicht threadsicher). `getObject(name)` liefert
-  `{"x", "y", "receivedAt"}` (`receivedAt` = `time.monotonic()`) oder `None`,
-  `getLatestObjects()` die ganze letzte Liste.
+  pika-Verbindung lebt nur dort, pika ist nicht threadsicher, Neuverbinden nach 2 s).
+  `getObject(name)` liefert `{"x", "y", "receivedAt"}` (`receivedAt` = `time.monotonic()`) oder `None`.
+- Bewusste Vereinfachungen in `aufgabeScanner.py`: keine Fehlerbehandlung in der Folgeschleife
+  (ein Timeout beendet das Skript, Schiff stoppt), kein Fallback, wenn die Station verschwindet.
+  Gesamtfrist `MAX_RUNTIME_SECONDS = 600` (Regel 2).
+- Start und Stolpersteine: README, Abschnitt "Aufgabe Scanner".

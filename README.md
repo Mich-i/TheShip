@@ -55,11 +55,139 @@ Die eigentliche Hürde ist das unterschiedliche JSON-Feld:
 
 Der Relay selbst kennt nur `from` und `payload` und darf den Inhalt nicht verändern.
 
-## Aufgabe Scanner
+## Aufgabe Scanner (Mission 09)
 
-Der Scanner braucht einen RabbitMQ-Broker auf Port 2014 der eigenen VM. Setup und Check:
-[docs/rabbitmq-setup.md](docs/rabbitmq-setup.md). Start der Mission (beide Schiffe gleichzeitig):
-[docs/aufgabe-scanner.md](docs/aufgabe-scanner.md).
+Ziel: Beide Schiffe bleiben je 60 s ohne Unterbruch in der Nähe von **G-Station 0-5**, und zwar
+gleichzeitig. Die Station fliegt im Uhrzeigersinn ein abgerundetes Quadrat (1800 × 1800 um
+15048/11104, etwa 55 Einheiten/s, Umlauf etwa 96 s) und kommt dabei am Treffpunkt **14148/10804**
+vorbei.
+
+Datei: `src/aufgabeScanner.py`, Helper `src/helpers/scanner.py` und `src/helpers/whatsupp.py`.
+
+### RabbitMQ
+
+Die Scanner-Komponente veröffentlicht ihre Messungen per AMQP. Sie verbindet sich mit
+`<eigene VM-IP>:2014` (guest/guest). Wir betreiben dafür RabbitMQ im k3s der VM
+(`k8s/rabbitmq.yaml`, Namespace `rabbitmq`, NodePort 2014). Setup und Check pro VM:
+[docs/rabbitmq-setup.md](docs/rabbitmq-setup.md).
+
+Nachrichtenformat: Fanout-Exchange `scanner/detected_objects`, etwa alle 0.2 s eine JSON-Liste
+aller Objekte in Sichtweite (mindestens ~2300 Einheiten):
+
+```json
+[{"name": "G-Station 0-5", "pos": {"x": 14148.0, "y": 11003.8, "r": 0.0}},
+ {"name": "192.168.100.51", "pos": {"x": 14135.0, "y": 11225.0, "r": 90.0}}]
+```
+
+`r` ist ein Drehwinkel. Neben Stationen erscheinen auch Schiffe (Name = IP).
+`scanner.py` hängt eine eigene, exklusive Queue an dieses Exchange. Das passiert in einem eigenen
+Thread, weil pika nicht threadsicher ist. Der Helper merkt sich immer nur die neueste Liste.
+Das Skript fragt sie mit `getObject(name)` ab.
+
+### So folgt das Skript
+
+1. Zum Treffpunkt fliegen. Von dort sieht der Scanner die ganze Bahn.
+2. Etwa 3-mal pro Sekunde die Position der Station lesen und ihre Geschwindigkeit aus der
+   letzten Sekunde schätzen.
+3. **Vorhalten:** Ziel = Position + Geschwindigkeit · 3 s (`LEAD_SECONDS`). Easy Steering bremst
+   vor dem Ziel ab. Ein Ziel direkt auf der Station hängt deshalb immer hinterher. Mit Vorhalten
+   fliegt das Schiff neben ihr. Testlauf: Distanz im Mittel 65, nie aus der Reichweite.
+4. Ende, wenn der WhatsUpp-Chat "09 - Scanner" abgeschlossen ist (`is_finished`) oder nicht mehr
+   existiert. Nach dem Abschluss verschwindet der Chat. Danach stoppt das Schiff, auch bei Ctrl+C.
+   Nach 600 s (`MAX_RUNTIME_SECONDS`) bricht das Skript ab.
+
+### Stolpersteine
+
+- **Der Zähler fällt auf 0**, sobald das Schiff die Reichweite verlässt (~245 Einheiten). Die 60 s
+  müssen am Stück erreicht werden.
+- **Beide gleichzeitig:** Die Mission ist erst fertig, wenn beide gleichzeitig 60/60 s haben.
+  Wer zuerst fertig ist, folgt weiter. Beide Skripte also ungefähr gleichzeitig starten.
+- **SHIP_IP** wählt das Schiff und den Namen im Fortschritt. Ohne Variable gilt
+  `192.168.100.50`. Marvin braucht immer `SHIP_IP=192.168.100.51`.
+- Repo-Pfad (`~/theship`) und venv-Name (`.venv`) müssen auf beiden VMs gleich sein, sonst
+  stimmen die Befehle unten nicht.
+- Easy Steering kennt nur Core und Azura beim Namen. Der Treffpunkt wird deshalb als Koordinate
+  angeflogen.
+
+### Startanleitung
+
+**1. Laptop:** Der neue Stand muss auf GitHub sein.
+
+```powershell
+git status
+git push
+```
+
+**2. Auf jeder VM** (Michael `192.168.100.50`, Marvin `192.168.100.51`):
+
+```bash
+ssh ship@192.168.100.50
+cd ~/theship
+git pull
+.venv/bin/python -m pip install -r requirements.txt
+```
+
+RabbitMQ prüfen (Pod `Running`, Port offen):
+
+```bash
+sudo k3s kubectl -n rabbitmq get pods
+timeout 3 bash -c "</dev/tcp/127.0.0.1/2014" && echo "2014 open"
+```
+
+Im Cockpit `http://<VM-IP>:2000` muss das Scanner-Widget `Status: scanning` zeigen.
+Läuft RabbitMQ auf der VM noch nicht:
+
+```bash
+sudo k3s kubectl apply -f k8s/rabbitmq.yaml
+sudo k3s kubectl -n rabbitmq rollout status deploy/rabbitmq --timeout=180s
+```
+
+Der Scanner verbindet sich innerhalb von 2 s selbst. Details: [docs/rabbitmq-setup.md](docs/rabbitmq-setup.md).
+
+**3. Starten, auf beiden VMs ungefähr gleichzeitig:**
+
+```bash
+# Michael, auf 192.168.100.50
+cd ~/theship
+SHIP_IP=192.168.100.50 .venv/bin/python src/aufgabeScanner.py
+```
+
+```bash
+# Marvin, auf 192.168.100.51
+cd ~/theship
+SHIP_IP=192.168.100.51 .venv/bin/python src/aufgabeScanner.py
+```
+
+Vom Laptop geht es auch, mit zwei Terminals im Projektordner:
+`$env:SHIP_IP = "192.168.100.51"; .\.venv\Scripts\python.exe src\aufgabeScanner.py`
+
+**4. Erfolg und Fehler**
+
+So sieht es aus, wenn es klappt:
+
+```text
+Ship 192.168.100.50 (Stutz Michael) is following G-Station 0-5
+[scanner] connected to 192.168.100.50:2014
+Rendezvous reached
+distance=35 progress=12/60s
+...
+Mission completed
+Ship stopped
+```
+
+Im WhatsUpp-Widget laufen beide Zähler bis 60/60 s, danach verschwindet der Chat.
+
+| Meldung / Symptom | Ursache und Lösung |
+|---|---|
+| `[scanner] connection to <IP>:2014 failed` | RabbitMQ läuft nicht: Schritt 2, RabbitMQ aufsetzen |
+| `Unknown ship IP ...` | `SHIP_IP` falsch oder vergessen |
+| Nach "Rendezvous reached" keine `distance=`-Zeilen | Scanner liefert nichts: Widget prüfen, sonst im Installer `scanner` → reinstall |
+| `progress` fällt auf 0 | Schiff war kurz ausser Reichweite. Das Skript folgt weiter und zählt neu |
+| Eigener Zähler bei 60, Skript läuft weiter | Normal, es wartet auf den Partner |
+| `Time limit of 600s reached` | Partner nicht gestartet: beide gemeinsam neu starten |
+| `ModuleNotFoundError: No module named 'pika'` | `pip install -r requirements.txt` vergessen |
+| `ConnectTimeout` bei Requests | VPN oder VM prüfen |
+| Seltsames Verhalten nach `git pull` | alten Bytecode löschen: `find ~/theship -name __pycache__ -type d -exec rm -rf {} +` |
 
 ## VM-Setup und Start
 
@@ -92,6 +220,8 @@ src/
   aufgabe1.py
   aufgabe2Elyse.py
   aufgabe2Shangris.py
+  aufgabeRaumAnomalie.py
+  aufgabeScanner.py
   components/
     components.py
   helpers/
@@ -100,6 +230,15 @@ src/
     stationChat.py
     communication.py
     cargoHold.py
+    energyManagement.py
+    vacuumEnergySensor.py
+    vacuumEnergyStore.py
+    scanner.py
+    whatsupp.py
+k8s/
+  rabbitmq.yaml
+docs/
+  rabbitmq-setup.md
 ```
 
 ## Wichtige Hinweise
