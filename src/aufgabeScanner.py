@@ -14,9 +14,6 @@ MISSION_CONTACT = "09 - Scanner"
 STATION_NAME = "G-Station 0-5"
 RENDEZVOUS = {"x": 14148, "y": 10804}
 RENDEZVOUS_RADIUS = 100
-
-# Easy Steering bremst vor dem Ziel ab. Darum zielen wir dorthin, wo die Station
-# in LEAD_SECONDS sein wird, damit wir neben ihr fliegen statt hinter ihr.
 LEAD_SECONDS = 3
 VELOCITY_WINDOW_SECONDS = 1
 LOOP_INTERVAL_SECONDS = 0.3
@@ -27,10 +24,8 @@ if IP not in PLAYER_NAMES:
     raise SystemExit(f"Unknown ship IP {IP}. Set SHIP_IP to one of: {', '.join(PLAYER_NAMES)}")
 playerName = PLAYER_NAMES[IP]
 
-
 def distanceBetween(first, second):
     return math.hypot(first["x"] - second["x"], first["y"] - second["y"])
-
 
 print(f"Ship {IP} ({playerName}) is following {STATION_NAME}")
 startScanner(IP)
