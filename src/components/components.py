@@ -1,4 +1,7 @@
-IP = "192.168.100.50"
+import os
+
+# Andere VM bzw. vom Laptop: SHIP_IP=192.168.100.51 python src/<skript>.py
+IP = os.environ.get("SHIP_IP", "192.168.100.50")
 RELAY_PORT = 5000
 HTTP_TIMEOUT_SECONDS = 2
 REQUEST_TIMEOUT_SECONDS = 10
@@ -14,6 +17,7 @@ modules = {
     "cargo-hold": f"http://{IP}:2012",
     "energy-management": [f"http://{IP}:2032", f"http://{IP}:2033"],
     "sensor-void-energy": f"http://{IP}:2037",
+    "whatsupp": f"http://{IP}:2040",
 }
 
 ELYSE = {

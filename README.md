@@ -58,7 +58,8 @@ Der Relay selbst kennt nur `from` und `payload` und darf den Inhalt nicht verän
 ## Aufgabe Scanner
 
 Der Scanner braucht einen RabbitMQ-Broker auf Port 2014 der eigenen VM. Setup und Check:
-[docs/rabbitmq-setup.md](docs/rabbitmq-setup.md).
+[docs/rabbitmq-setup.md](docs/rabbitmq-setup.md). Start der Mission (beide Schiffe gleichzeitig):
+[docs/aufgabe-scanner.md](docs/aufgabe-scanner.md).
 
 ## VM-Setup und Start
 

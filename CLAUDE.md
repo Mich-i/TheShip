@@ -24,8 +24,8 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
   `ThreadingHTTPServer`) an die Partner-VM weiter.
 - **Aufgabe 3 (Anomalie)** – funktional gelöst, **muss noch refactored werden**.
   <!-- TODO: hier kurz ergänzen: Ziel der Mission, beteiligte Komponenten/Ports, Dateiname(n) -->
-- **Aufgabe Scanner (Mission 09)** – in Arbeit. Broker läuft auf .50, Helper `scanner.py` fertig,
-  Missionsskript folgt. Details im Abschnitt "Aufgabe Scanner".
+- **Aufgabe Scanner (Mission 09)** – Skript `aufgabeScanner.py` fertig und auf .50 getestet.
+  Offen: Broker auf .51 und gemeinsamer Lauf beider Schiffe. Details im Abschnitt "Aufgabe Scanner".
 
 ## Bordkomponenten (Ports)
 
@@ -39,25 +39,29 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 | communication | 2011 | `GET /pos`, `GET /stations_in_reach`, `POST /buy`, `POST /sell` |
 | cargo_hold | 2012 | `GET /hold` (Credits, Ressourcen, hold_free) |
 | RabbitMQ (eigener Broker für scanner) | 2014 | AMQP, siehe "Aufgabe Scanner" |
-| whatsupp | 2040 | Missionstext/Chat |
+| whatsupp | 2040 | Missionstext/Chat, `GET /content` (JSON inkl. Fortschritt) |
 
 ## Projektstruktur
 
 ```
 src/
-  components/components.py   IP + Basis-URLs der Komponenten (IP = "127.0.0.1", läuft auf der VM)
+  components/components.py   IP + Basis-URLs der Komponenten. IP = Umgebungsvariable SHIP_IP,
+                             Default "192.168.100.50" (Michael). Marvin/.51: SHIP_IP=192.168.100.51
   helpers/                   cargoHold.py, communication.py, easySteering.py, stationChat.py,
                              relay.py, energyManagement.py, vacuumEnergy*.py, scanner.py
   aufgabe1.py
   aufgabe2Elyse.py
   aufgabe2Shangris.py
   aufgabeRaumAnomalie.py
+  aufgabeScanner.py
 k8s/rabbitmq.yaml            RabbitMQ-Broker für den Scanner
 docs/rabbitmq-setup.md       Setup-Anleitung Broker pro VM
 requirements.txt             requests, websocket-client, pymongo, pika
 ```
 
 Start aus dem Projektordner: `python src/<skript>.py` (kein `cd src` nötig).
+Für ein anderes Schiff: `SHIP_IP=192.168.100.51 python src/<skript>.py` (gilt für alle Skripte,
+weil `components.py` die IP liest; ohne Variable wird .50 verwendet).
 
 ## Code-Stil (verbindlich)
 
@@ -110,8 +114,20 @@ bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw St
   `[{"name": "Core Station", "pos": {"x": 0.0, "y": 0.0, "r": 316.3}}, ...]`.
   `r` ist ein Drehwinkel, kein Radius. Neben Stationen erscheinen auch Schiffe (Name = IP),
   viele mit 0/0.
-- **Der Scanner sieht nur Objekte in der Nähe.** Von Core (0/0) aus ist G-Station 0-5 nicht in
-  der Liste. Erst hinfliegen, dann auf ihr Auftauchen warten.
+- **Der Scanner sieht nur Objekte in der Nähe** (Sichtweite mind. ~2300). Von Core (0/0) aus ist
+  G-Station 0-5 nicht in der Liste, vom Treffpunkt aus die ganze Bahn.
+- **Bahn:** abgerundetes Quadrat 1800 × 1800 um (15048/11104), x 14148–15948, y 10204–12004,
+  im Uhrzeigersinn, Umlauf ~96 s, ~55 Einheiten/s. Der Treffpunkt liegt auf der linken Kante.
+- **"In der Nähe"** = `stations_in_reach` ≈ 240–250 Einheiten. `curr` zählt +1/s und fällt beim
+  Verlassen **sofort auf 0**. `done` gilt nur, solange man drin bleibt. Die Mission ist erst
+  fertig (`is_finished` im Chat), wenn beide gleichzeitig done sind → beide Skripte parallel starten.
+- **Steuerung:** Ziel direkt auf die Station hängt hinterher, weil Easy Steering vor dem Ziel
+  abbremst. Lösung: Ziel = Position + Geschwindigkeit · `LEAD_SECONDS` (3 s). Testlauf: Distanz
+  Mittel 65, Median 44, max 230, nie aus der Reichweite gefallen.
+- `/pos` `velocity` ist etwa Einheiten pro Tick (× ~25 ≈ Einheiten/s), wird nicht gebraucht.
+- WhatsUpp: `GET :2040/content` → `contacts["09 - Scanner"].chats[0]` mit `messages`
+  (`kind` `simple`/`progress`), `is_finished`, `choices`. Helper `helpers/whatsupp.py`.
+- Start und Varianten: `docs/aufgabe-scanner.md`.
 - Helper `src/helpers/scanner.py`: `startScanner(host)` startet einen Daemon-Thread (die
   pika-Verbindung lebt nur dort, pika ist nicht threadsicher). `getObject(name)` liefert
   `{"x", "y", "receivedAt"}` (`receivedAt` = `time.monotonic()`) oder `None`,
