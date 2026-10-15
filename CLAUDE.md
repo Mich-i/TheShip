@@ -24,6 +24,8 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
   `ThreadingHTTPServer`) an die Partner-VM weiter.
 - **Aufgabe 3 (Anomalie)** – funktional gelöst, **muss noch refactored werden**.
   <!-- TODO: hier kurz ergänzen: Ziel der Mission, beteiligte Komponenten/Ports, Dateiname(n) -->
+- **Aufgabe Scanner (Mission 09)** – in Arbeit. Broker läuft auf .50, Helper `scanner.py` fertig,
+  Missionsskript folgt. Details im Abschnitt "Aufgabe Scanner".
 
 ## Bordkomponenten (Ports)
 
@@ -36,6 +38,7 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 | navigation | 2010 | Position |
 | communication | 2011 | `GET /pos`, `GET /stations_in_reach`, `POST /buy`, `POST /sell` |
 | cargo_hold | 2012 | `GET /hold` (Credits, Ressourcen, hold_free) |
+| RabbitMQ (eigener Broker für scanner) | 2014 | AMQP, siehe "Aufgabe Scanner" |
 | whatsupp | 2040 | Missionstext/Chat |
 
 ## Projektstruktur
@@ -43,12 +46,15 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 ```
 src/
   components/components.py   IP + Basis-URLs der Komponenten (IP = "127.0.0.1", läuft auf der VM)
-  helpers/                   cargo_hold.py, communication.py, easy_steering.py, station_chat.py
+  helpers/                   cargoHold.py, communication.py, easySteering.py, stationChat.py,
+                             relay.py, energyManagement.py, vacuumEnergy*.py, scanner.py
   aufgabe1.py
   aufgabe2Elyse.py
   aufgabe2Shangris.py
-  (Aufgabe 3 ...)
-requirements.txt             requests, websocket-client
+  aufgabeRaumAnomalie.py
+k8s/rabbitmq.yaml            RabbitMQ-Broker für den Scanner
+docs/rabbitmq-setup.md       Setup-Anleitung Broker pro VM
+requirements.txt             requests, websocket-client, pymongo, pika
 ```
 
 Start aus dem Projektordner: `python src/<skript>.py` (kein `cd src` nötig).
@@ -72,8 +78,9 @@ Start aus dem Projektordner: `python src/<skript>.py` (kein `cd src` nötig).
   Format `{"from": ..., "payload": [...]}`. Diese Feldnamen nicht umbenennen.
 - Der XOR-verschlüsselte Payload (0xAA) muss Byte für Byte unverändert durchgereicht werden.
 - Shangris-WebSocket läuft auf Port **2025** (Prosa-Doku sagt fälschlich 2024).
-- Ports unter 5000 sind zwischen den VMs per Firewall gesperrt → Code muss auf den VMs laufen,
-  nicht auf dem Laptop.
+- Ports unter 5000 sind nur **zwischen den VMs** per Firewall gesperrt (VM→VM erst ab 5000,
+  z. B. Relay). Vom Laptop über VPN sind die Komponenten-Ports (20xx, auch 2014) erreichbar.
+  Code, der Ports < 5000 der *anderen* VM bräuchte, muss deshalb auf der jeweiligen VM laufen.
 - Deployment per `git pull` auf der VM. Bei Problemen alten Bytecode löschen:
   `find ~/theship -name __pycache__ -type d -exec rm -rf {} +`
 - Debian-VMs: `sudo apt install -y python3-pip python3-venv git` (pip fehlt standardmässig).
@@ -83,4 +90,29 @@ Start aus dem Projektordner: `python src/<skript>.py` (kein `cd src` nötig).
 - Bei Refactorings das Verhalten nicht ändern. Protokoll-Feldnamen, Stationsnamen, Koordinaten
   und Ports nie anfassen, ausser explizit verlangt.
 - Vor grösseren Änderungen kurz den Plan zeigen.
-- Code wird auf den VMs ausgeführt; lokal kann nicht gegen das Spiel getestet werden.
+- Code wird auf den VMs ausgeführt. Kurze Tests vom Laptop gegen eine VM gehen (siehe Gotchas).
+- `kubectl` auf der VM nur als `sudo k3s kubectl` (kein `~/.kube/config` für ship).
+
+## Aufgabe Scanner
+
+Mission: Beide Schiffe müssen je 60 s in der Nähe von **G-Station 0-5** bleiben, die regelmässig
+bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw State: kind
+`progress`, curr/max pro Person).
+
+- **Broker:** RabbitMQ im k3s der eigenen VM, Namespace `rabbitmq` (nicht `theship-vendor`, den
+  verwaltet der Installer), Image `rabbitmq:4`, Service `NodePort 2014 → 5672`, kein Volume.
+  Manifest `k8s/rabbitmq.yaml`, Anleitung `docs/rabbitmq-setup.md`. Stand: läuft auf .50.
+- **Scanner-Pod** (`theship-vendor/scanner`) verbindet sich mit `K8S_HOST:2014` (= eigene
+  VM-IP), Login pika-Standard guest/guest, und versucht es alle 2 s neu. Startet der Broker
+  später, ist kein Reinstall nötig.
+- **Exchanges** (beide `fanout`): `scanner/status` (Text, z. B. `scanning`) und
+  `scanner/detected_objects`. Auf `detected_objects` kommt etwa alle **0.2 s** eine JSON-Liste:
+  `[{"name": "Core Station", "pos": {"x": 0.0, "y": 0.0, "r": 316.3}}, ...]`.
+  `r` ist ein Drehwinkel, kein Radius. Neben Stationen erscheinen auch Schiffe (Name = IP),
+  viele mit 0/0.
+- **Der Scanner sieht nur Objekte in der Nähe.** Von Core (0/0) aus ist G-Station 0-5 nicht in
+  der Liste. Erst hinfliegen, dann auf ihr Auftauchen warten.
+- Helper `src/helpers/scanner.py`: `startScanner(host)` startet einen Daemon-Thread (die
+  pika-Verbindung lebt nur dort, pika ist nicht threadsicher). `getObject(name)` liefert
+  `{"x", "y", "receivedAt"}` (`receivedAt` = `time.monotonic()`) oder `None`,
+  `getLatestObjects()` die ganze letzte Liste.
