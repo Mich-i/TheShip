@@ -17,8 +17,10 @@ URAN_STONE = {"x": -2100, "y": 3600}
 ARRIVAL_RADIUS = 100
 ANALYZER_COMPONENTS = ["sensor_void_energy", "analyzer_alpha"]
 FLIGHT_TIMEOUT_SECONDS = 300
-ANALYSIS_TIMEOUT_SECONDS = 1800
-PROGRESS_INTERVAL_SECONDS = 10
+# Gemessen: ~2.5 % pro Sekunde, also ~40 s bis 100 %. Der Rest ist Zeit, bis auch
+# der Partner auf 100 % ist: Die Mission ist erst fertig, wenn beide gleichzeitig 100 % haben.
+ANALYSIS_TIMEOUT_SECONDS = 600
+PROGRESS_INTERVAL_SECONDS = 5
 
 if IP not in PLAYER_NAMES:
     raise SystemExit(f"Unknown ship IP {IP}. Set SHIP_IP to one of: {', '.join(PLAYER_NAMES)}")
@@ -29,6 +31,7 @@ def distanceBetween(first, second):
     return math.hypot(first["x"] - second["x"], first["y"] - second["y"])
 
 
+print(f"Ship {IP} ({playerName}): analyzing Uran Stone")
 enableComponents(ANALYZER_COMPONENTS)
 print("Power enabled for sensor and analyzer")
 
@@ -45,27 +48,29 @@ try:
         time.sleep(1)
     print("Uran Stone reached, holding position")
 
+    # Der Fortschritt faellt auf 0, sobald der Analyzer keine Daten mehr bekommt.
+    # Darum weiter Daten liefern, bis die Mission fuer beide abgeschlossen ist
+    # (is_finished, oder der Chat verschwindet nach dem Abschluss).
     deadline = time.monotonic() + ANALYSIS_TIMEOUT_SECONDS
-    percent = 0
-    while percent < 100:
+    chat = getMissionChat(MISSION_CONTACT)
+    while chat is not None and not chat["is_finished"]:
         if time.monotonic() > deadline:
-            raise TimeoutError(f"Analysis stuck at {percent:.1f}% after {ANALYSIS_TIMEOUT_SECONDS}s")
+            raise TimeoutError(f"Mission not finished within {ANALYSIS_TIMEOUT_SECONDS}s")
+
+        progressText = ", ".join(
+            f"{name} {getProgress(chat, name)['curr']:.0f}%" for name in PLAYER_NAMES.values()
+        )
+        print(f"Analysis progress: {progressText}")
         time.sleep(PROGRESS_INTERVAL_SECONDS)
 
         # Bewusste Ausnahme: Ein einzelner Fehler beim Lesen des Fortschritts beendet den
-        # langen Lauf nicht, wir fragen beim naechsten Durchgang einfach wieder.
+        # Lauf nicht, wir fragen beim naechsten Durchgang einfach wieder.
         try:
             chat = getMissionChat(MISSION_CONTACT)
         except requests.RequestException as error:
             print(f"Could not read progress, trying again: {error}")
-            continue
-        if chat is None:
-            print("Mission chat is gone, the mission is finished")
-            break
-        percent = getProgress(chat, playerName)["curr"]
-        print(f"Analysis progress: {percent:.1f}%")
 
-    print("Analysis completed")
+    print("Mission completed")
 finally:
     server.stop(grace=None)
     print("Sensor data server stopped")
