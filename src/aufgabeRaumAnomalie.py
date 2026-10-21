@@ -1,11 +1,13 @@
 from components.components import RELIEF
 from helpers.communication import stationsInReach
 from helpers.easySteering import setTarget
-from helpers.energyManagement import enableShieldComponents
+from helpers.energyManagement import enableComponents
 from helpers.vacuumEnergySensor import measureVacuumEnergy
 from helpers.vacuumEnergyStore import storeVacuumEnergy
 
-enableShieldComponents()
+SHIELD_COMPONENTS = ["sensor_void_energy", "shield_generator"]
+
+enableComponents(SHIELD_COMPONENTS)
 storeVacuumEnergy(measureVacuumEnergy())
 
 setTarget(RELIEF["coordinates"])

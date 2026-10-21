@@ -1,0 +1,19 @@
+// Kopie aus der Doku "Analyzer Alpha" (http://<VM-IP>:2000/doc/Analyzer Alpha/0).
+// Package-, Service- und Methodennamen muessen exakt so bleiben, sonst findet der Analyzer
+// unseren Server nicht.
+// Neu generieren (aus dem Projektordner):
+//   python -m grpc_tools.protoc -I src --python_out=src --grpc_python_out=src src/api/sensorVoidEnergy.proto
+syntax = "proto3";
+
+package api.unsafe.sensor_void_energy;
+
+service SensorVoidEnergyServer {
+    rpc read_sensor_data(Void) returns (SensorData);
+}
+
+message Void {
+}
+
+message SensorData {
+    string hexdata = 1;
+}

@@ -3,6 +3,8 @@ import os
 # Andere VM bzw. vom Laptop: SHIP_IP=192.168.100.51 python src/<skript>.py
 IP = os.environ.get("SHIP_IP", "192.168.100.50")
 RELAY_PORT = 5000
+# Unser gRPC-Server, den der Analyzer-Pod unter <VM-IP>:2102 abfragt
+ANALYZER_SERVER_PORT = 2102
 HTTP_TIMEOUT_SECONDS = 2
 REQUEST_TIMEOUT_SECONDS = 10
 RECONNECT_DELAY_SECONDS = 2
