@@ -26,6 +26,10 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
   <!-- TODO: hier kurz ergänzen: Ziel der Mission, beteiligte Komponenten/Ports, Dateiname(n) -->
 - **Aufgabe Scanner (Mission 09)** – gelöst (beide Schiffe gemeinsam), Code danach vereinfacht.
   Skript `aufgabeScanner.py`. Details im Abschnitt "Aufgabe Scanner", Startanleitung im README.
+- **Aufgabe Analyzer Alpha (Mission 05)** – Skript `aufgabeAnalyzerAlpha.py`, auf .50 getestet
+  (100 % nach ~45 s). Wir sind gRPC-**Server** (Port 2102, muss auf der VM laufen), der
+  Analyzer-Pod holt bei uns Vakuumenergie-Daten. Fortschritt fällt ohne Daten auf 0, beide
+  müssen gleichzeitig laufen. Details und Einschränkungen im README.
 
 ## Bordkomponenten (Ports)
 
@@ -39,6 +43,9 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 | communication | 2011 | `GET /pos`, `GET /stations_in_reach`, `POST /buy`, `POST /sell` |
 | cargo_hold | 2012 | `GET /hold` (Credits, Ressourcen, hold_free) |
 | RabbitMQ (eigener Broker für scanner) | 2014 | AMQP, siehe "Aufgabe Scanner" |
+| energy-management | 2032, 2033 | aktiv/passiv, `GET /status`, `GET/PUT /limits` (PUT ersetzt alles) |
+| sensor-void-energy | 2037 | `trigger_measurement`, `measurements/<id>`; ID nach DELETE ~1 s gesperrt |
+| unser Analyzer-Server | 2102 | gRPC, `src/api/sensorVoidEnergy.proto`, läuft auf der VM |
 | whatsupp | 2040 | Missionstext/Chat, `GET /content` (JSON inkl. Fortschritt) |
 
 ## Projektstruktur

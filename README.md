@@ -189,6 +189,121 @@ Im WhatsUpp-Widget laufen beide Zähler bis 60/60 s, danach verschwindet der Cha
 | `ConnectTimeout` bei Requests | VPN oder VM prüfen |
 | Seltsames Verhalten nach `git pull` | alten Bytecode löschen: `find ~/theship -name __pycache__ -type d -exec rm -rf {} +` |
 
+## Aufgabe Analyzer Alpha (Mission 05)
+
+Ziel: Bei **Uran Stone (-2100/3600)** bleiben und den Analyzer Alpha laufen lassen, bis der
+Fortschritt 100 % erreicht. Das gilt für beide Teammitglieder **gleichzeitig**.
+
+**Konzept:** Zum ersten Mal sind wir **gRPC-Server** und nicht Client. Das Schiffsmodul
+(Analyzer) baut die Verbindung zu uns auf und holt Daten ab. Dazu kommt **Resource Owner / Data
+Management**: Unser Server besitzt die Messungen beim Sensor. Er legt sie an, liest sie aus und
+räumt sie wieder weg, auch nach einem Absturz des Vorgängers.
+
+### Wer ruft wen auf
+
+```
+Analyzer-Pod (gRPC-Client)
+   │ read_sensor_data(), etwa 1 s nach jeder Antwort
+   ▼
+unser Server  0.0.0.0:2102 auf der eigenen VM   (gRPC-Server, aufgabeAnalyzerAlpha.py)
+   │ HTTP: trigger_measurement → measurements/<id> → DELETE
+   ▼
+Vakuumenergie-Sensor :2037
+```
+
+Der Analyzer gibt `hexdata` als Token an die Simulation weiter. Die Simulation zählt nur, wenn das
+Schiff bei Uran Stone steht. Bei 0/0 bleibt der Fortschritt trotz Daten auf 0 %.
+Voraussetzung ist Strom: `analyzer_alpha` und `sensor_void_energy` stehen im Energy Management
+anfangs auf 0.0.
+
+**Der Code muss auf der VM laufen.** Der Analyzer verbindet sich fest mit `<eigene VM-IP>:2102`.
+Ein Server auf dem Laptop wäre für ihn nicht erreichbar.
+
+### Neue und geänderte Dateien
+
+| Datei | Inhalt |
+|---|---|
+| `src/api/sensorVoidEnergy.proto` | 1:1 aus der Doku des Analyzers. Package, Service und Methodenname dürfen sich nicht ändern |
+| `src/api/sensorVoidEnergy_pb2.py`, `..._pb2_grpc.py` | Daraus generiert. Sie liegen im Repo, damit auf der VM `git pull` reicht. Neu erzeugen: `python -m grpc_tools.protoc -I src --python_out=src --grpc_python_out=src src/api/sensorVoidEnergy.proto` |
+| `src/helpers/analyzerServer.py` | `SensorVoidEnergyServer.read_sensor_data`: misst pro Anfrage frisch und gibt `hexdata` zurück. Scheitert die Messung, bekommt nur diese Anfrage `UNAVAILABLE`. `startAnalyzerServer()`: Server mit **einem** Worker auf Port 2102 starten |
+| `src/helpers/vacuumEnergySensor.py` | `measureVacuumEnergy()`: feste ID `vacuum-energy-reading`, vorher und im `finally` löschen, Frist 10 s. **Neu:** `trigger_measurement` wiederholen, solange der Sensor `duplicated request_id found` meldet |
+| `src/helpers/energyManagement.py` | `enableComponents(componentNames)` (früher `enableShieldComponents`): aktiven Node suchen (nicht erreichbare überspringen), Limits lesen, ergänzen und komplett zurückschicken |
+| `src/aufgabeAnalyzerAlpha.py` | Ablauf: Strom freigeben → Server starten → Uran Stone anfliegen und halten → Daten liefern, bis die Mission für beide abgeschlossen ist → `finally`: Server stoppen |
+| `src/components/components.py` | `ANALYZER_SERVER_PORT = 2102` |
+
+### Gemessen
+
+- Eine Messung dauert etwa 1–2 s. Nach einem `DELETE` lehnt der Sensor dieselbe ID noch bis
+  etwa 1 s lang ab.
+- **Fortschritt: etwa 2.5 % pro Sekunde, 100 % rund 45 s nach der Ankunft.** Ein Takt ist
+  Messung + 1 s.
+- Der Fortschritt **fällt sofort auf 0**, wenn der Analyzer keine Daten mehr bekommt. `done`
+  gilt nur, solange er läuft. Abgeschlossen (`is_finished`) ist die Mission erst, wenn
+  **beide gleichzeitig** 100 % haben. Darum liefert das Skript nach eigenen 100 % weiter Daten.
+- Frist: `ANALYSIS_TIMEOUT_SECONDS = 600`. Das sind 45 s Analyse plus Zeit, bis der Partner
+  auch auf 100 % ist. **Beide müssen innerhalb dieser 10 min starten.**
+
+### Start (beide VMs, ungefähr gleichzeitig)
+
+Einmalig pro VM die Messung mit der alten ID löschen (auf .50 schon erledigt):
+
+```bash
+curl -XDELETE http://127.0.0.1:2037/measurements/shield-generator-input
+```
+
+Danach auf jeder VM:
+
+```bash
+ssh ship@192.168.100.50          # Marvin: ship@192.168.100.51
+cd ~/theship
+git pull
+.venv/bin/python -m pip install -r requirements.txt
+SHIP_IP=192.168.100.50 .venv/bin/python src/aufgabeAnalyzerAlpha.py   # Marvin: SHIP_IP=192.168.100.51
+```
+
+Die Ausgabe bei Erfolg: `Uran Stone reached`, dann `Analysis progress: Stutz Michael 100%,
+Eggerschwiler Marvin 100%`, dann `Mission completed`. Im Widget „Analyzer Alpha“ steht
+`powered, active`.
+
+| Widget / Meldung | Bedeutung |
+|---|---|
+| `not enough power` | Limits nicht gesetzt, das Skript erledigt das selbst beim Start |
+| `powered, missing input` / `Connect call failed (…, 2102)` | Unser Server läuft nicht |
+| Fortschritt bleibt bei 0 % trotz `powered, active` | Schiff nicht bei Uran Stone |
+| `Mission not finished within 600s` | Partner hat nicht rechtzeitig gestartet |
+
+### Anleitung für Marvin (.51)
+
+Der Fortschritt zählt pro Person, und dein Analyzer holt die Daten nur bei **deinem** Server auf
+`192.168.100.51:2102`. Du musst das Skript also auf deiner VM laufen lassen, **gleichzeitig mit
+Michael**. Wer zuerst bei 100 % ist, liefert weiter Daten, bis der andere auch dort ist.
+
+1. VPN an, `ssh ship@192.168.100.51`.
+2. `cd ~/theship && git pull && .venv/bin/python -m pip install -r requirements.txt`
+3. Einmalig: `curl -XDELETE http://127.0.0.1:2037/measurements/shield-generator-input`
+4. Mit Michael absprechen, dann beide starten:
+   `SHIP_IP=192.168.100.51 .venv/bin/python src/aufgabeAnalyzerAlpha.py`
+5. Warten auf `Mission completed`. Das dauert etwa 1 min, wenn beide fast gleichzeitig starten.
+
+### Bewusste Einschränkungen
+
+- **Ein Worker, feste Mess-ID:** Es kann immer nur eine Messung gleichzeitig laufen. Eine
+  zweite Anfrage wartet. Für einen Analyzer, der nacheinander fragt, ist das kein Verlust.
+- **Kein Cache:** Jede Anfrage misst frisch (1–2 s). Das ist langsamer, dafür bekommt der Analyzer
+  nie einen alten Token.
+- **Fehler werden pro Anfrage behandelt:** Scheitert eine Messung, geht nur diese Anfrage schief.
+  Der Analyzer fragt nach 2 s neu. Auch ein Fehler beim Lesen des Fortschritts beendet den Lauf
+  nicht. Dafür fällt ein dauerhafter Fehler erst nach Ablauf der Frist auf. Bis dahin sieht man
+  ihn im Log und im Widget.
+- **Unverschlüsselt und offen auf 0.0.0.0:2102:** Das verlangt der Analyzer so (Package
+  `api.unsafe…`). Jeder im VPN könnte Sensordaten abholen, solange das Skript läuft.
+- **Nach dem Ende** bleiben die Limits auf 1.0, und das Schiff hält bei Uran Stone (Ziel bleibt
+  gesetzt). Bei einem harten Abbruch (`kill -9`) läuft `finally` nicht. Den Port gibt das
+  Betriebssystem trotzdem frei, und eine liegengebliebene Messung löscht der nächste Lauf.
+- **Abschaltung der VM:** Ist die Simulation (`192.168.96.2`) 10 min lang nicht per Ping
+  erreichbar, fährt `shutdown_cron` die VM herunter. Ein Abbruch mitten im Lauf hat dann diesen
+  Grund. Prüfen: `sudo journalctl -n 5 _PID=$(pgrep -f shutdown_cron)`.
+
 ## VM-Setup und Start
 
 Auf der VM:
@@ -222,6 +337,11 @@ src/
   aufgabe2Shangris.py
   aufgabeRaumAnomalie.py
   aufgabeScanner.py
+  aufgabeAnalyzerAlpha.py
+  api/
+    sensorVoidEnergy.proto
+    sensorVoidEnergy_pb2.py
+    sensorVoidEnergy_pb2_grpc.py
   components/
     components.py
   helpers/
@@ -235,6 +355,7 @@ src/
     vacuumEnergyStore.py
     scanner.py
     whatsupp.py
+    analyzerServer.py
 k8s/
   rabbitmq.yaml
 docs/
