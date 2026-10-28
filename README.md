@@ -304,6 +304,150 @@ Michael**. Wer zuerst bei 100 % ist, liefert weiter Daten, bis der andere auch d
   erreichbar, fährt `shutdown_cron` die VM herunter. Ein Abbruch mitten im Lauf hat dann diesen
   Grund. Prüfen: `sudo journalctl -n 5 _PID=$(pgrep -f shutdown_cron)`.
 
+## Aufgabe Laser (Mission 10)
+
+Ziel: Beide Schiffe docken **vollbeladen mit Stein (14/14)** bei **Vesta Station (7000/7000)** an.
+Den Stein baut man mit dem Laser (Port 2018) beim Asteroiden **Arakrock (-18236/-11783)** ab.
+Lernziel ist OAuth2: Den Laser darf nur ein eingeloggter Techniker benutzen, und den
+Login-Server (Keycloak) stellen wir selbst.
+
+Dateien: `src/aufgabeLaser.py`, Helper `src/helpers/laser.py`, Keycloak-Manifest `k8s/keycloak.yaml`.
+
+### Keycloak
+
+Auf der VM gibt es kein Docker. Darum läuft Keycloak wie RabbitMQ als Deployment im k3s:
+
+- Image `quay.io/keycloak/keycloak:26.0`, Modus `start-dev --import-realm`, Namespace `keycloak`
+- Service `NodePort 2015 → 8080`
+- Kein Volume: Bei jedem Start importiert Keycloak den Realm `theship` neu aus der ConfigMap im
+  Manifest. Das ist reproduzierbar und übersteht einen Neustart.
+- Im Realm stehen der confidential Client `laser`, der Scope `use_laser` und der User `techniker`.
+  Die redirect_uris enthalten die Callbacks beider VMs, darum ist das Manifest auf .50 und .51
+  identisch.
+- Im Manifest ist keine IP eingetragen. Keycloak bildet Issuer und Login-URLs aus der
+  aufgerufenen Adresse. Browser und Laser-Pod rufen beide `http://<VM-IP>:2015` auf und bekommen
+  deshalb denselben Issuer.
+
+| Was | Wert |
+|---|---|
+| Techniker-Login | `techniker` / `Laser-2026` |
+| Client | `laser`, Secret `5LgQDb_mOYc105g2N4vH2Im1Qgw_NvWL` |
+| Admin-Konsole | `http://<VM-IP>:2015/admin`, `admin` / `admin` |
+| Authorize-URL | `http://<VM-IP>:2015/realms/theship/protocol/openid-connect/auth` |
+| Token-URL | `http://<VM-IP>:2015/realms/theship/protocol/openid-connect/token` |
+
+Secret und Passwörter stehen bewusst im Klartext im Repo. Für ein Schulprojekt ist das in
+Ordnung, produktiv würde man das nie so machen.
+
+### So läuft der OAuth2-Login (Authorization Code Flow)
+
+```
+Browser ──1. GET :2018/login──────────────► Laser
+Browser ◄─2. Redirect auf Keycloak ─────────  (client_id=laser, scope=use_laser,
+                                               redirect_uri=http://<VM-IP>:2018/callback)
+Browser ──3. Login techniker/Passwort─────► Keycloak :2015
+Browser ◄─4. Redirect auf :2018/callback?code=… ─
+Browser ──5. GET :2018/callback?code=…────► Laser
+                                    Laser ──6. POST /token (code + client_secret)──► Keycloak
+                                    Laser ◄─7. Access Token ────────────────────────
+```
+
+1. Der Techniker öffnet `:2018/login`. Der Laser (**Client**) leitet ihn zu Keycloak
+   (**Authorization Server**) weiter.
+2. Das Passwort gibt der Techniker **nur bei Keycloak** ein. Der Laser sieht es nie.
+3. Keycloak leitet den Browser mit einem kurzlebigen **Code** zurück an die `redirect_uri` des
+   Lasers. Keycloak akzeptiert nur redirect_uris, die beim Client eingetragen sind.
+4. Der Laser tauscht den Code direkt bei Keycloak gegen ein **Access Token**. Dabei weist er sich
+   mit dem **Client-Secret** aus. Das Secret kennen nur Laser und Keycloak, es läuft nie über den
+   Browser. Darum heisst der Client "confidential".
+5. Mit dem Token gilt der Laser als freigeschaltet. Das Widget zeigt dann
+   "Freigeschaltet und inaktiv". Unser Skript braucht danach kein Token mehr, es ruft nur noch
+   `activate`, `angle` und `state` auf.
+
+`configure_oauth` sagt dem Laser, wo Keycloak liegt und wie sein Secret lautet. Die `client_id`
+(`laser`) und den Scope (`use_laser`) gibt der Laser selbst vor.
+
+### Abbau-Mechanik (gemessen)
+
+- **Direkt auf dem Asteroiden trifft der Laser nicht.** Das Skript hält 300 Einheiten östlich
+  von Arakrock (`MINING_POSITION`). Auf diese Distanz funktioniert es.
+- **Winkel:** `PUT /angle` ist relativ zum Schiff:
+  `Laserwinkel = Weltwinkel − Schiffswinkel + 90`. Weltwinkel laufen im Uhrzeigersinn
+  (0 = +x, 90 = −y, 180 = −x). Gemessen aus drei Richtungen (Osten, Norden, Südwesten).
+  `aimLaserAt()` rechnet das aus der aktuellen Position. Das Skript zielt jede Sekunde neu, weil
+  der Schiffswinkel beim Halten leicht dreht.
+- `activate` wirkt nach etwa 1 s (`state` zeigt es verzögert an). **Der Laser schaltet sich nach
+  etwa 10 s selbst ab** und wird dann neu aktiviert. `is_cooling_down` war im Test nie `true`.
+- **Etwa 1 Stein pro Sekunde**, der Hold ist in rund 15 s voll.
+- Der Steinzähler im WhatsUpp bleibt gespeichert. **"ist bei Vesta Station" gilt nur, solange
+  man dort ist.** Das Skript lässt das Ziel auf Vesta, damit das Schiff angedockt bleibt, bis
+  der Partner auch da ist.
+
+### Start (Michael, .50)
+
+Keycloak und Login sind auf .50 schon eingerichtet. Das Schiff von .50 wartet bereits
+vollbeladen bei Vesta.
+
+```bash
+cd ~/theship
+SHIP_IP=192.168.100.50 .venv/bin/python src/aufgabeLaser.py
+```
+
+Ausgabe bei Erfolg: `Arakrock reached`, einige `stone=…/14`-Zeilen, `Docked at Vesta Station`,
+dann der Fortschritt und `Waiting for partner` oder `Mission completed`.
+
+### Anleitung für Marvin (.51)
+
+Firewall: Ports unter 5000 sind zwischen den VMs gesperrt. Darum brauchst du einen **eigenen**
+Keycloak auf `192.168.100.51:2015`. Alle Befehle laufen auf deiner VM.
+
+1. VPN an, dann `ssh ship@192.168.100.51`
+2. Code holen:
+   ```bash
+   cd ~/theship
+   git pull
+   find ~/theship -name __pycache__ -type d -exec rm -rf {} +
+   ```
+3. Keycloak starten (der erste Start dauert 1–2 min, weil das Image geladen wird):
+   ```bash
+   sudo k3s kubectl apply -f k8s/keycloak.yaml
+   sudo k3s kubectl -n keycloak rollout status deploy/keycloak --timeout=300s
+   curl -s http://192.168.100.51:2015/realms/theship | head -c 100
+   ```
+   Die letzte Zeile muss JSON mit `"realm":"theship"` zeigen.
+4. Den Laser auf deinen Keycloak einstellen (**deine IP!**):
+   ```bash
+   curl -XPOST http://192.168.100.51:2018/configure_oauth --data '{"client_secret": "5LgQDb_mOYc105g2N4vH2Im1Qgw_NvWL", "authorize_url": "http://192.168.100.51:2015/realms/theship/protocol/openid-connect/auth", "token_url": "http://192.168.100.51:2015/realms/theship/protocol/openid-connect/token"}'
+   ```
+   Antwort: `{"kind": "success"}`
+5. Im Browser auf dem Laptop `http://192.168.100.51:2018/login` öffnen und mit `techniker` /
+   `Laser-2026` anmelden. Im Cockpit `http://192.168.100.51:2000` muss das Laser-Widget
+   **"Freigeschaltet und inaktiv"** zeigen.
+6. Skript starten:
+   ```bash
+   SHIP_IP=192.168.100.51 .venv/bin/python src/aufgabeLaser.py
+   ```
+7. Fertig, wenn `Mission completed` erscheint. Das Schiff bleibt bei Vesta stehen. Beende das
+   Skript nicht mit einem Wegflug, sonst gilt "ist bei Vesta" nicht mehr.
+
+| Meldung / Symptom | Ursache und Lösung |
+|---|---|
+| Widget "Deaktiviert (keine oauth2 Config)" | Schritt 4 fehlt, oder der Laser-Pod wurde neu installiert. Schritt 4 und 5 wiederholen |
+| Keycloak zeigt "Invalid parameter: redirect_uri" | Login über eine andere Adresse als die VM-IP geöffnet. `http://<VM-IP>:2018/login` verwenden |
+| `Hold not full within 120s. Is the technician logged in?` | Login fehlt (Widget prüfen, Schritt 5), oder `active=True mining=False`: Winkel trifft nicht, Ausgabe melden |
+| `connection refused` auf Port 2015 | Keycloak läuft nicht: Schritt 3 |
+| `TimeoutError ... not reached` | Schiff kam nicht an: Cockpit prüfen, neu starten |
+
+### Bewusste Einschränkungen
+
+- `configure_oauth` und der Browser-Login sind **einmalige Handarbeit** und nicht im Skript.
+  Ein erneuter `configure_oauth`-Aufruf könnte die Freischaltung zurücksetzen.
+- Keycloak hat keine Datenbank auf Disk. Nach einem Neustart ist der Realm wieder da, die
+  Sessions aber nicht. Ob der Laser danach freigeschaltet bleibt, haben wir nicht getestet.
+  Im Zweifel Schritt 5 wiederholen. Ohne Neustart hielt die Freischaltung im Test über 20 min.
+- Feste Abbauposition östlich von Arakrock, kein Suchen des Winkels. Trifft der Laser nicht,
+  bricht das Skript nach 120 s ab.
+
 ## VM-Setup und Start
 
 Auf der VM:
@@ -338,6 +482,7 @@ src/
   aufgabeRaumAnomalie.py
   aufgabeScanner.py
   aufgabeAnalyzerAlpha.py
+  aufgabeLaser.py
   api/
     sensorVoidEnergy.proto
     sensorVoidEnergy_pb2.py
@@ -356,8 +501,10 @@ src/
     scanner.py
     whatsupp.py
     analyzerServer.py
+    laser.py
 k8s/
   rabbitmq.yaml
+  keycloak.yaml
 docs/
   rabbitmq-setup.md
 ```

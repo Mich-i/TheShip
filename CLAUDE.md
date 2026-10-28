@@ -30,6 +30,10 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
   (100 % nach ~45 s). Wir sind gRPC-**Server** (Port 2102, muss auf der VM laufen), der
   Analyzer-Pod holt bei uns Vakuumenergie-Daten. Fortschritt fällt ohne Daten auf 0, beide
   müssen gleichzeitig laufen. Details und Einschränkungen im README.
+- **Aufgabe Laser (Mission 10)** – Skript `aufgabeLaser.py`, Helper `helpers/laser.py`. Auf .50
+  erledigt (14/14 Stein, bei Vesta angedockt, Schiff wartet dort). Marvin fehlt noch. Eigener
+  Keycloak pro VM (`k8s/keycloak.yaml`, Port 2015) für den OAuth2-Login des Lasers. Details,
+  OAuth-Flow und Anleitung für Marvin im README.
 
 ## Bordkomponenten (Ports)
 
@@ -43,6 +47,8 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 | communication | 2011 | `GET /pos`, `GET /stations_in_reach`, `POST /buy`, `POST /sell` |
 | cargo_hold | 2012 | `GET /hold` (Credits, Ressourcen, hold_free) |
 | RabbitMQ (eigener Broker für scanner) | 2014 | AMQP, siehe "Aufgabe Scanner" |
+| Keycloak (eigener OAuth2-Server für laser) | 2015 | Realm `theship`, siehe "Aufgabe Laser" |
+| laser | 2018 | `configure_oauth`, `/login`, `activate`/`deactivate`, `PUT /angle`, `GET /state` |
 | energy-management | 2032, 2033 | aktiv/passiv, `GET /status`, `GET/PUT /limits` (PUT ersetzt alles) |
 | sensor-void-energy | 2037 | `trigger_measurement`, `measurements/<id>`; ID nach DELETE ~1 s gesperrt |
 | unser Analyzer-Server | 2102 | gRPC, `src/api/sensorVoidEnergy.proto`, läuft auf der VM |
@@ -55,13 +61,17 @@ src/
   components/components.py   IP + Basis-URLs der Komponenten. IP = Umgebungsvariable SHIP_IP,
                              Default "192.168.100.50" (Michael). Marvin/.51: SHIP_IP=192.168.100.51
   helpers/                   cargoHold.py, communication.py, easySteering.py, stationChat.py,
-                             relay.py, energyManagement.py, vacuumEnergy*.py, scanner.py
+                             relay.py, energyManagement.py, vacuumEnergy*.py, scanner.py,
+                             whatsupp.py, analyzerServer.py, laser.py
   aufgabe1.py
   aufgabe2Elyse.py
   aufgabe2Shangris.py
   aufgabeRaumAnomalie.py
   aufgabeScanner.py
+  aufgabeAnalyzerAlpha.py
+  aufgabeLaser.py
 k8s/rabbitmq.yaml            RabbitMQ-Broker für den Scanner
+k8s/keycloak.yaml            Keycloak (OAuth2) für den Laser, Realm-Import per ConfigMap
 docs/rabbitmq-setup.md       Setup-Anleitung Broker pro VM
 requirements.txt             requests, websocket-client, pymongo, pika
 ```
@@ -144,3 +154,25 @@ bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw St
   (ein Timeout beendet das Skript, Schiff stoppt), kein Fallback, wenn die Station verschwindet.
   Gesamtfrist `MAX_RUNTIME_SECONDS = 600` (Regel 2).
 - Start und Stolpersteine: README, Abschnitt "Aufgabe Scanner".
+
+## Aufgabe Laser
+
+- **Keycloak** läuft im k3s (kein Docker auf der VM, auch nicht mit sudo), Namespace `keycloak`,
+  `NodePort 2015 → 8080`, `start-dev --import-realm`, kein Volume. Der Realm wird bei jedem Start
+  neu importiert. Eigene `clientScopes` im Realm-JSON ersetzen Keycloaks Standard-Scopes, darum
+  ist `basic` (sub-Mapper) von Hand mit drin.
+- Keine IP im Manifest: Keycloak leitet den Issuer aus dem Host-Header ab. Browser und Laser-Pod
+  nutzen beide `http://<VM-IP>:2015`. Der Laser-Pod erreicht den NodePort über die VM-IP.
+- Der Laser gibt selbst vor: `client_id=laser`, `scope=use_laser`,
+  `redirect_uri=http://<Host-Header>:2018/callback`. Keycloak-Pfade statt `:2015/authorize`
+  aus der Doku: `/realms/theship/protocol/openid-connect/auth` bzw. `/token`.
+- `/state` zeigt den Login nicht an, nur das Widget ("Freigeschaltet und inaktiv").
+  `activate` liefert immer `success`. Der Zustand ändert sich erst nach ~1 s, nach ~10 s
+  schaltet sich der Laser selbst ab. `is_cooling_down` war nie true.
+- **Direkt auf dem Asteroiden wird nicht abgebaut**, 300 Einheiten Abstand funktionieren.
+  Winkel relativ zum Schiff: `Laserwinkel = Weltwinkel − pos.angle + 90`, Weltwinkel im
+  Uhrzeigersinn (0 = +x, 90 = −y). Etwa 1 Stein/s.
+- Der Steinzähler im WhatsUpp bleibt gespeichert, "ist bei Vesta Station" gilt nur live. Das
+  Schiff muss bei Vesta bleiben, bis der Partner da ist. Vesta handelt nicht (keine Ressourcen).
+- Energy Management (2032/2033) war während Mission 10 nicht installiert und ist für den Laser
+  nicht nötig.
