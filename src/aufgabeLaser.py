@@ -1,6 +1,5 @@
 import math
 import time
-from components.components import IP
 from helpers.cargoHold import getInventory
 from helpers.communication import getPosition, stationsInReach
 from helpers.easySteering import setTarget
@@ -37,7 +36,7 @@ def stoneInHold():
     return hold["resources"]["STONE"], hold["hold_size"]
 
 
-print(f"Ship {IP}: mining stone at Arakrock")
+print("Mining stone at Arakrock")
 flyTo(MINING_POSITION)
 print("Arakrock reached")
 
