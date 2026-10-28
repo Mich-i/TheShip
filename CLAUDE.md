@@ -59,7 +59,8 @@ Doku pro Komponente: `http://<ip>:2000/doc/<ComponentName>/0`.
 ```
 src/
   components/components.py   IP + Basis-URLs der Komponenten. IP = Umgebungsvariable SHIP_IP,
-                             Default "192.168.100.50" (Michael). Marvin/.51: SHIP_IP=192.168.100.51
+                             Default "127.0.0.1" (auf der VM). Laptop, Scanner und Analyzer
+                             brauchen SHIP_IP (Spielername). Marvin/.51: SHIP_IP=192.168.100.51
   helpers/                   cargoHold.py, communication.py, easySteering.py, stationChat.py,
                              relay.py, energyManagement.py, vacuumEnergy*.py, scanner.py,
                              whatsupp.py, analyzerServer.py, laser.py
@@ -78,7 +79,7 @@ requirements.txt             requests, websocket-client, pymongo, pika
 
 Start aus dem Projektordner: `python src/<skript>.py` (kein `cd src` nötig).
 Für ein anderes Schiff: `SHIP_IP=192.168.100.51 python src/<skript>.py` (gilt für alle Skripte,
-weil `components.py` die IP liest; ohne Variable wird .50 verwendet).
+weil `components.py` die IP liest; ohne Variable wird 127.0.0.1 verwendet, also nur auf der VM).
 
 ## Code-Stil (verbindlich)
 
@@ -176,3 +177,15 @@ bei (14148/10804) vorbeikommt. Fortschritt im WhatsUpp-Widget (Port 2040, Raw St
   Schiff muss bei Vesta bleiben, bis der Partner da ist. Vesta handelt nicht (keine Ressourcen).
 - Energy Management (2032/2033) war während Mission 10 nicht installiert und ist für den Laser
   nicht nötig.
+- **Keycloak-Neustart getestet** (`sudo k3s kubectl -n keycloak rollout restart deploy/keycloak`):
+  Realm kommt per Import zurück, Sessions sind weg, der Laser bleibt aber "Freigeschaltet" und
+  `activate` funktioniert. Die Freischaltung hängt also am Laser, nicht an Keycloak. Ist sie
+  trotzdem weg (Widget nicht mehr "Freigeschaltet"): neu einloggen über `http://<VM-IP>:2018/login`.
+  Zeigt das Widget "keine oauth2 Config" (z. B. nach Reinstall des Laser-Pods, nicht getestet):
+  zuerst `configure_oauth` erneut, dann neu einloggen.
+- Echte VM-IP nur in `configure_oauth` (authorize/token URL) und in der Login-URL nötig: Der
+  Browser folgt der `authorize_url`, der Laser-Pod ruft die `token_url` auf, beide müssen dieselbe
+  Adresse erreichen. Das Skript selbst läuft mit dem Default `127.0.0.1` ohne `SHIP_IP`.
+- Kein Ort kauft Stein zurück (Vesta, Core, Azura, Illume Colony, G-Station 3-5 geprüft), der Hold
+  lässt sich also nicht leeren. Die Abbau-Schleife im Skript lief deshalb auf .50 nie mit leerem
+  Hold, nur die Einzelaufrufe von Hand.
