@@ -1,0 +1,128 @@
+# Keycloak als OAuth2-Server fuer den Laser (Aufgabe Laser)
+# Gleiches Manifest auf beiden VMs, keine VM-IP noetig: Keycloak leitet Issuer und
+# Login-URLs aus dem Host-Header ab (http://<VM-IP>:2015), Browser und Laser-Pod nutzen dieselbe URL.
+# Kein Volume: Bei jedem Start wird der Realm "theship" aus der ConfigMap neu importiert.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: keycloak
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: keycloak
+data:
+  theship-realm.json: |
+    {
+      "realm": "theship",
+      "enabled": true,
+      "sslRequired": "none",
+      "clientScopes": [
+        {
+          "name": "basic",
+          "protocol": "openid-connect",
+          "attributes": {"include.in.token.scope": "false", "display.on.consent.screen": "false"},
+          "protocolMappers": [
+            {
+              "name": "sub",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-sub-mapper",
+              "config": {"access.token.claim": "true", "introspection.token.claim": "true"}
+            }
+          ]
+        },
+        {
+          "name": "use_laser",
+          "protocol": "openid-connect",
+          "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "false"}
+        }
+      ],
+      "clients": [
+        {
+          "clientId": "laser",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "clientAuthenticatorType": "client-secret",
+          "secret": "5LgQDb_mOYc105g2N4vH2Im1Qgw_NvWL",
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": false,
+          "redirectUris": [
+            "http://192.168.100.50:2018/callback",
+            "http://192.168.100.51:2018/callback",
+            "http://localhost:2018/callback"
+          ],
+          "defaultClientScopes": ["basic"],
+          "optionalClientScopes": ["use_laser"]
+        }
+      ],
+      "users": [
+        {
+          "username": "techniker",
+          "enabled": true,
+          "email": "techniker@theship.local",
+          "emailVerified": true,
+          "firstName": "Laser",
+          "lastName": "Techniker",
+          "credentials": [{"type": "password", "value": "Laser-2026", "temporary": false}]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:26.0
+          args: ["start-dev", "--import-realm"]
+          env:
+            - name: KC_BOOTSTRAP_ADMIN_USERNAME
+              value: admin
+            - name: KC_BOOTSTRAP_ADMIN_PASSWORD
+              value: admin
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+          resources:
+            limits:
+              memory: 1Gi
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 20
+            periodSeconds: 5
+      volumes:
+        - name: realm
+          configMap:
+            name: keycloak-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: keycloak
+spec:
+  type: NodePort
+  selector:
+    app: keycloak
+  ports:
+    - name: http
+      port: 2015
+      targetPort: 8080
+      nodePort: 2015
